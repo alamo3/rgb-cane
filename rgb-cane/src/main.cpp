@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <WS2812FX.h>
+#include <Audio.h>
+#include <WiFiMulti.h>
 #define LED_PIN 22
 
 #define X_OUT A13
@@ -19,6 +21,12 @@ const float sensitivity = 0.33;  // Typical sensitivity is 330mV per g
 bool bMeasureAcceleration = false;
 bool bTestAudio = true;
 
+Audio audio(true, I2S_DAC_CHANNEL_BOTH_EN);
+WiFiMulti wifiMulti;
+String ssid =     "FastExtended";
+String password = "canada2003";
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -27,6 +35,19 @@ void setup()
   ws2812fx.setSpeed(1000);
   ws2812fx.setMode(FX_MODE_RAINBOW_CYCLE);
   ws2812fx.start();
+
+  WiFi.mode(WIFI_STA);
+    wifiMulti.addAP(ssid.c_str(), password.c_str());
+    wifiMulti.run();
+    if(WiFi.status() != WL_CONNECTED){
+        WiFi.disconnect(true);
+        wifiMulti.run();
+    }
+
+  audio.setVolume(10);
+
+  audio.connecttohost("http://mp3.ffh.de/radioffh/hqlivestream.mp3"); //  128k mp3
+
 }
 
 void loop() {
@@ -77,5 +98,11 @@ void loop() {
     delay(1000);
   }
 
+  audio.loop();
 
+
+}
+
+void audio_info(const char *info){
+    Serial.print("info        "); Serial.println(info);
 }
