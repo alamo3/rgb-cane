@@ -1,17 +1,28 @@
 #include <Arduino.h>
 #include <WS2812FX.h>
-#include <Audio.h>
+#include <AudioFileSourceSD.h>
+#include <AudioFileSourceBuffer.h>
+#include <AudioFileSourceHTTPStream.h>
+#include <AudioOutputI2S.h>
+#include <AudioGeneratorMP3.h>
 #include <WiFiMulti.h>
+
+#include <SD.h>
+#include <SPI.h>
 #define LED_PIN 22
 
 #define X_OUT A13
 #define Y_OUT A12
 #define Z_OUT A11
 
+#define DAC_PIN 25
+#define SD_CS_PIN 5
 #define NUMPIXELS 20
 
 WS2812FX ws2812fx = WS2812FX(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 #define DELAYVAL 500
+
+
 
 const float zeroG_voltage_Y = 1.52; // Typically 1.65V for a 3.3V supply
 const float zeroG_voltage_X = 1.52;
@@ -21,11 +32,17 @@ const float sensitivity = 0.33;  // Typical sensitivity is 330mV per g
 bool bMeasureAcceleration = false;
 bool bTestAudio = true;
 
-Audio audio(true, I2S_DAC_CHANNEL_BOTH_EN);
-WiFiMulti wifiMulti;
-String ssid =     "FastExtended";
-String password = "canada2003";
 
+
+WiFiMulti wifiMulti;
+String ssid =     "Notouch";
+String password = "hact6104";
+
+AudioFileSourceSD *file;
+
+AudioGeneratorMP3 *mp3;
+AudioOutputI2S *out;
+File dir;
 
 void setup()
 {
@@ -44,9 +61,24 @@ void setup()
         wifiMulti.run();
     }
 
-  audio.setVolume(10);
+    file = new AudioFileSourceSD();
+    mp3 = new AudioGeneratorMP3();
+    out = new AudioOutputI2S(0, AudioOutputI2S::INTERNAL_DAC);
+    out->SetOutputModeMono(true);
+    out->SetGain(0.9);
+    out->stop();
 
-  audio.connecttohost("http://mp3.ffh.de/radioffh/hqlivestream.mp3"); //  128k mp3
+
+
+  if(!SD.begin(SD_CS_PIN)){
+    Serial.println("SD Card Mount Failed!");
+    while(1);
+  }
+
+  file->open("/morse.mp3");
+
+  mp3->begin(file,out);
+
 
 }
 
@@ -98,7 +130,20 @@ void loop() {
     delay(1000);
   }
 
-  audio.loop();
+  if(mp3->isRunning())
+  {
+    if (!mp3->loop()){
+       mp3->stop(); 
+       out->stop();
+    }
+  } else {
+    Serial.printf("MP3 done\n");
+    delay(1000);
+    file->close();
+    file->open("/morse.mp3");
+
+    mp3->begin(file,out);
+  }
 
 
 }
