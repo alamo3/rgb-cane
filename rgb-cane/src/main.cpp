@@ -3,7 +3,6 @@
 #include <AudioFileSourceSD.h>
 #include <AudioFileSourceBuffer.h>
 #include <AudioFileSourceHTTPStream.h>
-#include <AudioOutputI2S.h>
 #include <AudioGeneratorMP3.h>
 #include <WiFiMulti.h>
 
@@ -29,13 +28,13 @@ const float zeroG_voltage_X = 1.52;
 const float zeroG_voltage_Z = 2.62; // Typically 1.65V for a 3.3V supply
 const float sensitivity = 0.33;  // Typical sensitivity is 330mV per g
 
-bool bMeasureAcceleration = false;
+bool bMeasureAcceleration = true;
 bool bTestAudio = true;
 
 
 
 WiFiMulti wifiMulti;
-String ssid =     "Notouch";
+String ssid =     "Fa";
 String password = "hact6104";
 
 AudioFileSourceSD *file;
@@ -53,13 +52,13 @@ void setup()
   ws2812fx.setMode(FX_MODE_RAINBOW_CYCLE);
   ws2812fx.start();
 
-  WiFi.mode(WIFI_STA);
-    wifiMulti.addAP(ssid.c_str(), password.c_str());
-    wifiMulti.run();
-    if(WiFi.status() != WL_CONNECTED){
-        WiFi.disconnect(true);
-        wifiMulti.run();
-    }
+  // WiFi.mode(WIFI_STA);
+  //   wifiMulti.addAP(ssid.c_str(), password.c_str());
+  //   wifiMulti.run();
+  //   if(WiFi.status() != WL_CONNECTED){
+  //       WiFi.disconnect(true);
+  //       wifiMulti.run();
+  //   }
 
     file = new AudioFileSourceSD();
     mp3 = new AudioGeneratorMP3();
@@ -75,7 +74,10 @@ void setup()
     while(1);
   }
 
-  file->open("/morse.mp3");
+  if(!file->open("/morse.mp3"))
+  {
+    Serial.println("Failed to open file on sd card!");
+  }
 
   mp3->begin(file,out);
 
@@ -127,11 +129,12 @@ void loop() {
     Serial.print(zAccel);
     Serial.print("\n\n");
 
-    delay(1000);
+    //delay(1000);
   }
 
   if(mp3->isRunning())
   {
+    //Serial.println("MP3 is running");
     if (!mp3->loop()){
        mp3->stop(); 
        out->stop();
