@@ -1,156 +1,70 @@
 #include <Arduino.h>
 #include <WS2812FX.h>
-#include <AudioFileSourceSD.h>
-#include <AudioFileSourceBuffer.h>
-#include <AudioFileSourceHTTPStream.h>
-#include <AudioGeneratorMP3.h>
 #include <WiFiMulti.h>
 
 #include <SD.h>
 #include <SPI.h>
-#define LED_PIN 22
+#include "Audio.h"
 
-#define X_OUT A13
-#define Y_OUT A12
-#define Z_OUT A11
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_ADXL345_U.h>
 
-#define DAC_PIN 25
-#define SD_CS_PIN 5
-#define NUMPIXELS 20
+#define SD_CS_PIN    10
+#define SD_MOSI_PIN  11
+#define SD_CLK_PIN   12
+#define SD_MISO_PIN  13
 
-WS2812FX ws2812fx = WS2812FX(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
-#define DELAYVAL 500
+SPIClass sdSPI(FSPI); // Create a custom SPI instance
 
+#define I2S_LRC  4  // Word Select / Left-Right Clock
+#define I2S_BCLK 5  // Bit Clock
+#define I2S_DOUT 6  // Data Out
 
+#define I2C_SDA 1
+#define I2C_SCL 2
 
-const float zeroG_voltage_Y = 1.52; // Typically 1.65V for a 3.3V supply
-const float zeroG_voltage_X = 1.52;
-const float zeroG_voltage_Z = 2.62; // Typically 1.65V for a 3.3V supply
-const float sensitivity = 0.33;  // Typical sensitivity is 330mV per g
-
-bool bMeasureAcceleration = true;
-bool bTestAudio = true;
-
-
-
-WiFiMulti wifiMulti;
-String ssid =     "Fa";
-String password = "hact6104";
-
-AudioFileSourceSD *file;
-
-AudioGeneratorMP3 *mp3;
-AudioOutputI2S *out;
-File dir;
+Audio audio;
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
 
 void setup()
 {
+
   Serial.begin(115200);
-  ws2812fx.init();
-  ws2812fx.setBrightness(100);
-  ws2812fx.setSpeed(1000);
-  ws2812fx.setMode(FX_MODE_RAINBOW_CYCLE);
-  ws2812fx.start();
 
-  // WiFi.mode(WIFI_STA);
-  //   wifiMulti.addAP(ssid.c_str(), password.c_str());
-  //   wifiMulti.run();
-  //   if(WiFi.status() != WL_CONNECTED){
-  //       WiFi.disconnect(true);
-  //       wifiMulti.run();
-  //   }
+  Wire.begin(I2C_SDA, I2C_SCL);
 
-    file = new AudioFileSourceSD();
-    mp3 = new AudioGeneratorMP3();
-    out = new AudioOutputI2S(0, AudioOutputI2S::INTERNAL_DAC);
-    out->SetOutputModeMono(true);
-    out->SetGain(0.9);
-    out->stop();
+  sdSPI.begin(SD_CLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
 
-
-
-  if(!SD.begin(SD_CS_PIN)){
+  if (!SD.begin(SD_CS_PIN, sdSPI)) {
     Serial.println("SD Card Mount Failed!");
-    while(1);
   }
 
-  if(!file->open("/morse.mp3"))
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  audio.setVolume(18);
+
+  audio.connecttoFS(SD, "/morse.mp3");
+
+  if(!accel.begin(0x53))
   {
-    Serial.println("Failed to open file on sd card!");
+    Serial.println("Unable to connect to adxl345");
   }
 
-  mp3->begin(file,out);
-
+  accel.setRange(ADXL345_RANGE_16_G);
 
 }
 
 void loop() {
-  ws2812fx.service();
+  audio.loop();
+  //Serial.println("Test1");
 
-  if(bMeasureAcceleration)
-  {
-    int x_adc_value, y_adc_value, z_adc_value; 
-
-    x_adc_value = analogRead(X_OUT);
-    y_adc_value = analogRead(Y_OUT);
-    z_adc_value = analogRead(Z_OUT);
-
-    // Convert raw ADC values to voltages
-    float xVoltage = x_adc_value * (3.3 / 4095.0);
-    float yVoltage = y_adc_value * (3.3 / 4095.0);
-    float zVoltage = z_adc_value * (3.3 / 4095.0);
-
-    // Calculate acceleration in g
-    float xAccel = (xVoltage - zeroG_voltage_X) / sensitivity;
-    float yAccel = (yVoltage - zeroG_voltage_Y) / sensitivity;
-    float zAccel = (zVoltage - zeroG_voltage_Z) / sensitivity;
-
-
-    double roll, pitch, yaw;
-
-
-    // Serial.print("Roll = ");
-    // Serial.print(roll);
-    // Serial.print("\t");
-    // Serial.print("Pitch = ");
-    // Serial.print(pitch);
-    // Serial.print("\t");
-    // Serial.print("Yaw = ");
-    // Serial.print(yaw);
-    // Serial.print("\n\n");
-
-    Serial.print("X = ");
-    Serial.print(xAccel);
-    Serial.print("\t");
-    Serial.print("Y = ");
-    Serial.print(yAccel);
-    Serial.print("\t");
-    Serial.print("Z = ");
-    Serial.print(zAccel);
-    Serial.print("\n\n");
-
-    //delay(1000);
-  }
-
-  if(mp3->isRunning())
-  {
-    //Serial.println("MP3 is running");
-    if (!mp3->loop()){
-       mp3->stop(); 
-       out->stop();
-    }
-  } else {
-    Serial.printf("MP3 done\n");
-    delay(1000);
-    file->close();
-    file->open("/morse.mp3");
-
-    mp3->begin(file,out);
-  }
+  sensors_event_t event; 
+  accel.getEvent(&event);
+  Serial.print("X: "); Serial.print(event.acceleration.x); Serial.print("  ");
+  Serial.print("Y: "); Serial.print(event.acceleration.y); Serial.print("  ");
+  Serial.print("Z: "); Serial.print(event.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
+  
 
 
 }
 
-void audio_info(const char *info){
-    Serial.print("info        "); Serial.println(info);
-}
